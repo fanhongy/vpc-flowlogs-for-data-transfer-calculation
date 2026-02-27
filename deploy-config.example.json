@@ -1,0 +1,25 @@
+{
+  "hubAccount": {
+    "id": "111111111111",
+    "region": "us-east-1",
+    "profile": "hub-profile",
+    "lambdaCodeBucket": "my-lambda-bucket-hub"
+  },
+  "spokeAccounts": [
+    {
+      "id": "222222222222",
+      "region": "us-east-1",
+      "profile": "spoke1-profile",
+      "vpcIds": ["vpc-aaaa1111", "vpc-bbbb2222"],
+      "lambdaCodeBucket": "my-lambda-bucket-spoke1"
+    },
+    {
+      "id": "333333333333",
+      "region": "us-west-2",
+      "profile": "spoke2-profile",
+      "vpcIds": ["vpc-cccc3333"],
+      "lambdaCodeBucket": "my-lambda-bucket-spoke2"
+    }
+  ],
+  "stackPrefix": "DTAZ"
+}
