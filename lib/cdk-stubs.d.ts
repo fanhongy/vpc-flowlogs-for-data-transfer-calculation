@@ -426,6 +426,35 @@ declare module 'aws-cdk-lib/aws-logs' {
     static anyTerm(...terms: string[]): FilterPattern;
     static literal(pattern: string): FilterPattern;
   }
+
+  // L1 (CloudFormation) constructs
+  export interface CfnDestinationProps {
+    destinationName: string;
+    roleArn: string;
+    targetArn: string;
+    destinationPolicy?: string;
+  }
+
+  export class CfnDestination extends Construct {
+    constructor(scope: Construct, id: string, props: CfnDestinationProps);
+    readonly attrArn: string;
+    readonly destinationName: string;
+    destinationPolicy?: string;
+  }
+
+  export interface CfnSubscriptionFilterProps {
+    logGroupName: string;
+    destinationArn: string;
+    filterPattern: string;
+    roleArn?: string;
+    filterName?: string;
+    distribution?: string;
+  }
+
+  export class CfnSubscriptionFilter extends Construct {
+    constructor(scope: Construct, id: string, props: CfnSubscriptionFilterProps);
+    readonly attrFilterName: string;
+  }
 }
 
 // aws-cdk-lib/aws-logs-destinations stubs
@@ -635,19 +664,4 @@ declare module 'aws-cdk-lib/aws-lambda-event-sources' {
   }
 }
 
-// aws-cdk-lib/aws-logs CfnDestination stubs (L1 construct)
-declare module 'aws-cdk-lib/aws-logs' {
-  export interface CfnDestinationProps {
-    destinationName: string;
-    roleArn: string;
-    targetArn: string;
-    destinationPolicy?: string;
-  }
-
-  export class CfnDestination {
-    constructor(scope: import('constructs').Construct, id: string, props: CfnDestinationProps);
-    readonly attrArn: string;
-    readonly destinationName: string;
-    destinationPolicy?: string;
-  }
-}
+// Note: CfnDestination and CfnSubscriptionFilter L1 constructs added to aws-cdk-lib/aws-logs above

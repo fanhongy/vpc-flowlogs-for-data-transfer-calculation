@@ -7,3 +7,5 @@
 
 export { PreRolesStack, PreRolesStackProps } from './pre-roles-stack';
 export { HubStack, HubStackProps } from './hub-stack';
+export { SingleAccountStack, SingleAccountStackProps } from './single-account-stack';
+export { SpokeStack, SpokeStackProps } from './spoke-stack';
