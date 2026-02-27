@@ -106,7 +106,11 @@ def get_subnet_id_from_eni(eni: str, account_id: str | None = None) -> str | Non
             response = ec2.describe_network_interfaces(
                 NetworkInterfaceIds=[eni]
             )
-            return response['NetworkInterfaces'][0]['SubnetId']
+            interfaces = response.get('NetworkInterfaces', [])
+            if not interfaces:
+                print(f"No network interface found for ENI {eni}")
+                return None
+            return interfaces[0]['SubnetId']
         except botocore.exceptions.ClientError as e:
             print(f"Error describing ENI {eni}: {e}")
             return None
@@ -133,7 +137,11 @@ def get_subnet_id_from_eni(eni: str, account_id: str | None = None) -> str | Non
             response = ec2.describe_network_interfaces(
                 NetworkInterfaceIds=[eni]
             )
-            return response['NetworkInterfaces'][0]['SubnetId']
+            interfaces = response.get('NetworkInterfaces', [])
+            if not interfaces:
+                print(f"No network interface found for ENI {eni} in account {account_id}")
+                return None
+            return interfaces[0]['SubnetId']
             
         except botocore.exceptions.ClientError as e:
             print(f"Error describing ENI {eni} in account {account_id}: {e}")
@@ -173,14 +181,14 @@ def process_large_byte_count(byte_count: int, response: dict[str, Any]) -> None:
     """
     if byte_count > TEN_POWER_NINE:
         num_chunks = math.ceil(byte_count / TEN_POWER_NINE)
-        remaining = byte_count
         
         for i in range(num_chunks):
-            remaining -= int(TEN_POWER_NINE)
-            if remaining >= 0:
-                response['event']['bytes'] = int(TEN_POWER_NINE) - 1
+            if i < num_chunks - 1:
+                # Full chunk
+                response['event']['bytes'] = int(TEN_POWER_NINE)
             else:
-                response['event']['bytes'] = int(TEN_POWER_NINE) + remaining + num_chunks
+                # Last chunk with remaining bytes
+                response['event']['bytes'] = byte_count - (i * int(TEN_POWER_NINE))
             print(json.dumps(response))
     else:
         response['event']['bytes'] = byte_count
@@ -210,9 +218,13 @@ def lambda_handler(event: dict[str, Any], context: Any) -> None:
         uncompressed_payload = gzip.decompress(compressed_payload)
         payload = json.loads(uncompressed_payload)
         
-        eni_id = payload['logEvents'][0]['extractedFields']['interface_id']
+        log_events = payload.get('logEvents', [])
+        if not log_events:
+            print("Warning: No log events found in payload")
+            return
+        
+        eni_id = log_events[0]['extractedFields']['interface_id']
         subnet_id = get_subnet_id_from_eni(eni_id)
-        log_events = payload['logEvents']
     else:
         # Multi-account: Kinesis stream
         cw_data = event['Records'][0]['kinesis']['data']
@@ -220,10 +232,14 @@ def lambda_handler(event: dict[str, Any], context: Any) -> None:
         uncompressed_payload = gzip.decompress(compressed_payload)
         payload = json.loads(uncompressed_payload)
         
-        eni_id = payload['logEvents'][0]['extractedFields']['interface_id']
+        log_events = payload.get('logEvents', [])
+        if not log_events:
+            print("Warning: No log events found in payload")
+            return
+        
+        eni_id = log_events[0]['extractedFields']['interface_id']
         owner_id = payload['owner']
         subnet_id = get_subnet_id_from_eni(eni_id, owner_id)
-        log_events = payload['logEvents']
     
     # Extract flow log entries
     for log_event in log_events:

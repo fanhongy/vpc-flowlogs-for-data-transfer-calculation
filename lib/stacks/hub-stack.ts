@@ -94,26 +94,20 @@ export class HubStack extends Stack {
       description: 'Role for spoke accounts to access AZ mapping DynamoDB table',
     });
 
-    // Grant DynamoDB full access (matching CloudFormation template)
-    ddbRole.addToPolicy(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ['dynamodb:*'],
-        resources: ['*'],
-      })
-    );
-
-    // Grant S3 bucket operations for spoke accounts
+    // Grant DynamoDB access scoped to AZ mapping table only
     ddbRole.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
         actions: [
-          's3:CreateBucket',
-          's3:DeleteBucket',
-          's3:DeleteBucket*',
-          's3:PutBucket*',
+          'dynamodb:PutItem',
+          'dynamodb:GetItem',
+          'dynamodb:Query',
+          'dynamodb:Scan',
+          'dynamodb:UpdateItem',
+          'dynamodb:DeleteItem',
+          'dynamodb:BatchWriteItem',
         ],
-        resources: ['*'],
+        resources: [this.azMappingTable.table.tableArn],
       })
     );
 
@@ -213,12 +207,33 @@ export class HubStack extends Stack {
       })
     );
 
-    // Add DynamoDB, S3, EC2, Kinesis permissions
+    // Add scoped permissions for specific resources
     calculatorLambdaRole.addToPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
-        actions: ['dynamodb:*', 's3:*', 'ec2:*', 'kinesis:*'],
-        resources: ['*'],
+        actions: ['dynamodb:Scan', 'dynamodb:GetItem', 'dynamodb:Query'],
+        resources: [this.azMappingTable.table.tableArn],
+      })
+    );
+
+    calculatorLambdaRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ['ec2:DescribeNetworkInterfaces'],
+        resources: ['*'], // EC2 describe actions don't support resource-level permissions
+      })
+    );
+
+    calculatorLambdaRole.addToPolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'kinesis:GetRecords',
+          'kinesis:GetShardIterator',
+          'kinesis:DescribeStream',
+          'kinesis:ListShards',
+        ],
+        resources: [this.kinesisStream.streamArn],
       })
     );
 
