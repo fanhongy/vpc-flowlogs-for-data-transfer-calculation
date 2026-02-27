@@ -37,11 +37,44 @@ declare module 'aws-cdk-lib' {
     static days(amount: number): Duration;
   }
 
+  export interface Environment {
+    account?: string;
+    region?: string;
+  }
+
+  export interface StackProps {
+    env?: Environment;
+    description?: string;
+    stackName?: string;
+    tags?: Record<string, string>;
+    terminationProtection?: boolean;
+  }
+
   export class Stack extends Construct {
+    constructor(scope: Construct | undefined, id: string, props?: StackProps);
     static of(construct: Construct): Stack;
     readonly account: string;
     readonly region: string;
     readonly stackName: string;
+  }
+
+  export class Fn {
+    static join(delimiter: string, listOfValues: string[]): string;
+    static select(index: number, array: string[]): string;
+    static split(delimiter: string, source: string): string[];
+    static sub(body: string, variables?: Record<string, string>): string;
+  }
+
+  export interface CfnOutputProps {
+    value: string;
+    description?: string;
+    exportName?: string;
+    condition?: unknown;
+  }
+
+  export class CfnOutput extends Construct {
+    constructor(scope: Construct, id: string, props: CfnOutputProps);
+    readonly value: string;
   }
 
   export class CustomResource extends Construct {
@@ -52,6 +85,16 @@ declare module 'aws-cdk-lib' {
     readonly ref: string;
     getAtt(attributeName: string): unknown;
     getAttString(attributeName: string): string;
+  }
+
+  export class Aws {
+    static readonly ACCOUNT_ID: string;
+    static readonly REGION: string;
+    static readonly STACK_NAME: string;
+    static readonly STACK_ID: string;
+    static readonly URL_SUFFIX: string;
+    static readonly NO_VALUE: string;
+    static readonly PARTITION: string;
   }
 }
 
@@ -215,6 +258,19 @@ declare module 'aws-cdk-lib/aws-iam' {
     readonly assumeRoleAction: string;
     addToPrincipalPolicy(statement: PolicyStatement): { statementAdded: boolean; policyDependable?: unknown };
   }
+
+  export class CompositePrincipal implements IPrincipal {
+    constructor(...principals: IPrincipal[]);
+    readonly grantPrincipal: IPrincipal;
+    readonly assumeRoleAction: string;
+    addPrincipals(...principals: IPrincipal[]): this;
+    addToPrincipalPolicy(statement: PolicyStatement): { statementAdded: boolean; policyDependable?: unknown };
+  }
+
+  export interface IRole extends IGrantable, IPrincipal {
+    readonly roleArn: string;
+    readonly roleName: string;
+  }
 }
 
 // aws-cdk-lib/aws-lambda stubs
@@ -223,6 +279,17 @@ declare module 'aws-cdk-lib/aws-lambda' {
   import { Duration } from 'aws-cdk-lib';
   import * as iam from 'aws-cdk-lib/aws-iam';
   import * as logs from 'aws-cdk-lib/aws-logs';
+
+  export interface IFunction extends iam.IGrantable {
+    readonly functionArn: string;
+    readonly functionName: string;
+    readonly grantPrincipal: iam.IPrincipal;
+    addEventSource(source: IEventSource): void;
+  }
+
+  export interface IEventSource {
+    bind(target: IFunction): void;
+  }
 
   export class Runtime {
     static readonly PYTHON_3_7: Runtime;
@@ -264,7 +331,7 @@ declare module 'aws-cdk-lib/aws-lambda' {
     layers?: unknown[];
   }
 
-  export class Function extends Construct implements iam.IGrantable {
+  export class Function extends Construct implements IFunction {
     constructor(scope: Construct, id: string, props: FunctionProps);
     readonly functionArn: string;
     readonly functionName: string;
@@ -274,6 +341,7 @@ declare module 'aws-cdk-lib/aws-lambda' {
     addPermission(id: string, permission: unknown): void;
     grantInvoke(grantee: iam.IGrantable): iam.Grant;
     addToRolePolicy(statement: iam.PolicyStatement): void;
+    addEventSource(source: IEventSource): void;
   }
 }
 
@@ -490,5 +558,96 @@ declare module 'aws-cdk-lib/custom-resources' {
     readonly serviceToken: string;
     readonly onEventHandler: lambda.Function;
     readonly isCompleteHandler?: lambda.Function;
+  }
+}
+
+// aws-cdk-lib/aws-kinesis stubs
+declare module 'aws-cdk-lib/aws-kinesis' {
+  import { Construct } from 'constructs';
+  import { RemovalPolicy } from 'aws-cdk-lib';
+  import * as iam from 'aws-cdk-lib/aws-iam';
+
+  export enum StreamMode {
+    ON_DEMAND = 'ON_DEMAND',
+    PROVISIONED = 'PROVISIONED',
+  }
+
+  export interface IStream {
+    readonly streamArn: string;
+    readonly streamName: string;
+    grantRead(grantee: iam.IGrantable): iam.Grant;
+    grantWrite(grantee: iam.IGrantable): iam.Grant;
+    grantReadWrite(grantee: iam.IGrantable): iam.Grant;
+    grant(grantee: iam.IGrantable, ...actions: string[]): iam.Grant;
+  }
+
+  export interface StreamProps {
+    streamName?: string;
+    shardCount?: number;
+    streamMode?: StreamMode;
+    retentionPeriod?: unknown;
+    encryption?: unknown;
+    encryptionKey?: unknown;
+    removalPolicy?: RemovalPolicy;
+  }
+
+  export class Stream extends Construct implements IStream {
+    constructor(scope: Construct, id: string, props?: StreamProps);
+    readonly streamArn: string;
+    readonly streamName: string;
+    static fromStreamArn(scope: Construct, id: string, streamArn: string): IStream;
+    static fromStreamAttributes(scope: Construct, id: string, attrs: { streamArn: string; encryptionKey?: unknown }): IStream;
+    grantRead(grantee: iam.IGrantable): iam.Grant;
+    grantWrite(grantee: iam.IGrantable): iam.Grant;
+    grantReadWrite(grantee: iam.IGrantable): iam.Grant;
+    grant(grantee: iam.IGrantable, ...actions: string[]): iam.Grant;
+  }
+}
+
+// aws-cdk-lib/aws-lambda-event-sources stubs
+declare module 'aws-cdk-lib/aws-lambda-event-sources' {
+  import { Duration } from 'aws-cdk-lib';
+  import * as kinesis from 'aws-cdk-lib/aws-kinesis';
+  import * as lambda from 'aws-cdk-lib/aws-lambda';
+
+  export enum StartingPosition {
+    TRIM_HORIZON = 'TRIM_HORIZON',
+    LATEST = 'LATEST',
+    AT_TIMESTAMP = 'AT_TIMESTAMP',
+  }
+
+  export interface KinesisEventSourceProps {
+    batchSize?: number;
+    startingPosition: StartingPosition;
+    maxBatchingWindow?: Duration;
+    parallelizationFactor?: number;
+    retryAttempts?: number;
+    bisectBatchOnError?: boolean;
+    maxRecordAge?: Duration;
+    reportBatchItemFailures?: boolean;
+    onFailure?: unknown;
+    filters?: unknown[];
+  }
+
+  export class KinesisEventSource {
+    constructor(stream: kinesis.IStream, props: KinesisEventSourceProps);
+    bind(target: lambda.IFunction): void;
+  }
+}
+
+// aws-cdk-lib/aws-logs CfnDestination stubs (L1 construct)
+declare module 'aws-cdk-lib/aws-logs' {
+  export interface CfnDestinationProps {
+    destinationName: string;
+    roleArn: string;
+    targetArn: string;
+    destinationPolicy?: string;
+  }
+
+  export class CfnDestination {
+    constructor(scope: import('constructs').Construct, id: string, props: CfnDestinationProps);
+    readonly attrArn: string;
+    readonly destinationName: string;
+    destinationPolicy?: string;
   }
 }
