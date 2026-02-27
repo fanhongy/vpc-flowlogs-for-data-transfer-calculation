@@ -8,3 +8,5 @@
 export { AzMappingTableConstruct, AzMappingTableProps } from './az-mapping-table';
 export { VpcFlowLogsConstruct, VpcFlowLogsProps } from './vpc-flowlogs-construct';
 export { CloudTrailConstruct, CloudTrailProps } from './cloudtrail-construct';
+export { LoadDdbCustomResourceConstruct, LoadDdbCustomResourceProps } from './load-ddb-custom-resource';
+export { UpdateDdbConstruct, UpdateDdbProps } from './update-ddb-construct';

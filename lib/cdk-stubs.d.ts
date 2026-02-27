@@ -309,6 +309,13 @@ declare module 'aws-cdk-lib/aws-logs' {
     INFINITE = 9999,
   }
 
+  export interface ILogGroup {
+    readonly logGroupArn: string;
+    readonly logGroupName: string;
+    grantRead(grantee: iam.IGrantable): iam.Grant;
+    grantWrite(grantee: iam.IGrantable): iam.Grant;
+  }
+
   export interface LogGroupProps {
     logGroupName?: string;
     retention?: RetentionDays;
@@ -316,7 +323,7 @@ declare module 'aws-cdk-lib/aws-logs' {
     encryptionKey?: unknown;
   }
 
-  export class LogGroup extends Construct {
+  export class LogGroup extends Construct implements ILogGroup {
     constructor(scope: Construct, id: string, props?: LogGroupProps);
     readonly logGroupArn: string;
     readonly logGroupName: string;
@@ -325,10 +332,20 @@ declare module 'aws-cdk-lib/aws-logs' {
     addSubscriptionFilter(id: string, props: unknown): unknown;
   }
 
+  export interface ILogSubscriptionDestination {
+    bind(scope: Construct, sourceLogGroup: ILogGroup): LogSubscriptionDestinationConfig;
+  }
+
+  export interface LogSubscriptionDestinationConfig {
+    arn: string;
+    role?: iam.IRole;
+  }
+
   export interface SubscriptionFilterProps {
-    logGroup: LogGroup;
-    destination: unknown;
+    logGroup: ILogGroup;
+    destination: ILogSubscriptionDestination;
     filterPattern: FilterPattern;
+    filterName?: string;
   }
 
   export class SubscriptionFilter extends Construct {
@@ -340,6 +357,22 @@ declare module 'aws-cdk-lib/aws-logs' {
     static allTerms(...terms: string[]): FilterPattern;
     static anyTerm(...terms: string[]): FilterPattern;
     static literal(pattern: string): FilterPattern;
+  }
+}
+
+// aws-cdk-lib/aws-logs-destinations stubs
+declare module 'aws-cdk-lib/aws-logs-destinations' {
+  import { Construct } from 'constructs';
+  import * as lambda from 'aws-cdk-lib/aws-lambda';
+  import * as logs from 'aws-cdk-lib/aws-logs';
+
+  export interface LambdaDestinationOptions {
+    addPermissions?: boolean;
+  }
+
+  export class LambdaDestination implements logs.ILogSubscriptionDestination {
+    constructor(fn: lambda.Function, options?: LambdaDestinationOptions);
+    bind(scope: Construct, sourceLogGroup: logs.ILogGroup): logs.LogSubscriptionDestinationConfig;
   }
 }
 
