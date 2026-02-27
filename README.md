@@ -1,68 +1,252 @@
-## vpc-flowlogs-for-data-transfer-calculation
+# VPC Flow Logs for Data Transfer Calculation
 
-### Single Account Setup
-The deployment for a single account setup is as follows:
+Calculate cross-Availability Zone data transfer costs using VPC Flow Logs. This solution captures VPC flow logs, maps IP addresses to availability zones, and produces metrics for cost analysis.
 
-1. Upload the code for lambda functions and the lambda layer to an Amazon Simple Storage Service (S3) bucket in the Region where you want to deploy this infrastructure. This includes calculator.zip, loadAZCidr.zip, CreateVpcFlowlogs.zip and UpdateDDBTable.zip.
-2. Log on to the AWS Management Console. Select the CloudFormation service.
-3. Launch the CloudFormation stack using the template single-account-deployment.yml.
-4. Provide the S3 bucket name that you used in step 1 and the IDs of the VPCs that you want to watch, to see the data transferred between Availability Zones.
-5. Next, acknowledge the permissions required to provision IAM roles, and cross account permissions granted via Organization policies and create the stack.
-6. Select the Resources tab in the center pane. Validate that all the resources are CREATE_COMPLETE and the stack is in CREATE_COMPLETE state.
-7. Next, configure CloudWatch Contributor Insights and its associated alarms. To do this, perform:
-  a. Log on to the AWS Management Console. Select the CloudWatch service.
-  b. Select Contributor Insights on the left pane. In the create rule wizard, choose custom rule.
-  c. Provide an appropriate rule name.
-  d. Select the log group of your calculator lambda function (rcalculatorlambda) that was created by cloudformation stack in step 3.
-  e. Select log format as JSON, Contribution as event.srIp and event.destIp
-  f. Aggregate on SUM and event.bytes.
-  g. Select create rule in enabled state and then choose Create.
- 
-8. To create alarms for your Contributor Insights metrics:
-  a. In the CloudWatch console, from the left navigation pane, choose Contributor Insights and then choose the rule.
-  b. Choose Actions and then choose View in Metrics.
-  c. Choose Unique Contributors. This metric will be graphed in CloudWatch metrics.
-  d. Choose the alarm icon in the row of the metric. For example, create an alarm when there are more than 1GB of data transfer observed per minute between a particular source and destination.
-  e. Choose Create. Figure 4 provides a Contributor Insight as a metric for data transfer between AZs.
+## Architecture Overview
 
-### Multi Account Setup
-The deployment comprises of three steps for a multi account setup. We have outlined the details of each step below:
+This solution supports two deployment patterns:
 
-#### Pre-requisites:
+- **Single-Account**: All resources in one AWS account -- ideal for simple setups
+- **Multi-Account (Hub-Spoke)**: Central hub processes logs from multiple spoke accounts -- ideal for organizations
 
-1. Setting up IAM roles and policies:   
+For detailed architecture diagrams and data flow explanations, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-All the stacks launched must be prefixed with DTAZ. For example, create stacks with names - DTAZ-pre-role, DTAZ-Data-Transfer-Calculator and DTAZ-Data-Transfer-Update etc.
+## Prerequisites
 
-2. Spoke account:
+Before deploying, ensure you have the following installed:
 
-  a. Log on to the AWS Management Console of your spoke account. Upload loadAZCidr.zip, CreateVpcFlowlogs.zip and UpdateDDBTable.zip file to s3 bucket that stores your lambda code.
-  b. Log on to the AWS Management Console of spoke account. Select CloudFormation service.
-  c. Launch a CloudFormation stack using the template pre-roles.yml . This creates the execution roles required for the lambda functions.
-  d. Next, acknowledge the permissions required to provision IAM roles, and cross account permissions granted via Organization policies and create the stack.
-  e. Select the Resources tab in the center pane. Validate that all the resources are CREATE_COMPLETE and the stack is in CREATE_COMPLETE state. Figure 5 shows a pre-role stack along with its parameters.
+| Requirement | Version | Notes |
+|-------------|---------|-------|
+| Node.js | 18+ | Required for CDK CLI |
+| AWS CDK CLI | 2.130+ | Install via `npm install -g aws-cdk` |
+| Python | 3.11+ | For Lambda functions |
+| AWS CLI | 2.x | With configured credentials |
+| jq | any | For deployment scripts |
 
-### Step 1 : Set up the Hub Account
+Additionally:
+- AWS account(s) with appropriate permissions
+- VPC(s) to monitor
+- CDK bootstrapped in target account/region: `cdk bootstrap aws://ACCOUNT_ID/REGION`
 
-1. Upload the code for lambda function, calculator.zip, to the S3 bucket in the Region where you want to deploy the infrastructure.
-2. Select CloudFormation service. CloudFormation stack using the template data-transfer-calculator.yml This creates the DynamoDB table and the central lambda function that calculates the cost.
-3. Select the Resources tab in the center pane. Validate that all the resources are CREATE_COMPLETE and the stack is in CREATE_COMPLETE state.
+## Quick Start -- Single Account
 
-### Step 2 : Set up the Spoke Account
+For a standalone deployment where all VPCs are in one AWS account:
 
-1. Copy the outputs from the stack provisioned by the data transfer calculator template in the hub account. This will serve as inputs to the next step.
-2. Select CloudFormation and launch a CloudFormation stack using the data-transfer-calculator-update.yml template. This creates a lambda function and a custom resource. The Lambda function is triggered by a AWS CloudTrail API for any subnet creation activity and keeps the DynamoDB up to date with subnet - AZ mapping. 3. The custom resource and the backend lambda function will push the initial data (current subnet AZ IDs and CICD blocks) to DynamoDB table.
-4. Select the Resources tab in the center pane. Validate that all the resources are CREATE_COMPLETE and the stack is in CREATE_COMPLETE state.
+### 1. Clone and Install
 
-### Step 3 : Set up the Contributor Insights and Alarms in CloudWatch
+```bash
+git clone https://github.com/aws-samples/vpc-flowlogs-for-data-transfer-calculation.git
+cd vpc-flowlogs-for-data-transfer-calculation
+npm install
+```
 
-Next, configure CloudWatch Contributor Insights metrics for data transfer between Availability Zones, and its associated alarms as described in the single account setup.
+### 2. Bootstrap CDK (if not already done)
 
-### Cleanup
+```bash
+cdk bootstrap aws://YOUR_ACCOUNT_ID/us-east-1
+```
 
-To avoid ongoing charges, delete the resources you created. Go to the AWS Management Console, identify the CloudFormation stack you launched. Select delete stack. This operation will delete the resources you created (the Dynamo DB, the lambda functions, Contributor Insights rules, CloudWatch Logs Insights rules, and alarms).
+### 3. Deploy
+
+```bash
+./scripts/deploy-single-account.sh --vpc-ids vpc-12345678
+```
+
+Or with multiple VPCs and custom options:
+
+```bash
+./scripts/deploy-single-account.sh \
+  --vpc-ids vpc-aaaa1111,vpc-bbbb2222 \
+  --profile my-aws-profile \
+  --region us-west-2 \
+  --prefix MYAPP
+```
+
+### 4. Verify Deployment
+
+Check the CloudFormation console or run:
+
+```bash
+aws cloudformation describe-stacks --stack-name DTAZ-SingleAccountStack
+```
+
+### 5. Configure CloudWatch Contributor Insights
+
+After deployment, set up CloudWatch Contributor Insights for visualization:
+
+1. Open the CloudWatch console
+2. Select **Contributor Insights** from the left navigation
+3. Choose **Create rule** > **Custom rule**
+4. Configure:
+   - **Rule name**: `CrossAZDataTransfer`
+   - **Log group**: Select the calculator Lambda's log group
+   - **Log format**: JSON
+   - **Contribution**: `event.srcIp` and `event.destIp`
+   - **Aggregate on**: SUM, `event.bytes`
+5. Create the rule in enabled state
+
+### 6. Create Alarms (Optional)
+
+1. In the Contributor Insights rule, choose **Actions** > **View in Metrics**
+2. Select **Unique Contributors**
+3. Click the alarm icon to create an alarm (e.g., alert when >1GB transferred per minute)
+
+## Multi-Account Deployment
+
+For organizations with multiple AWS accounts, use the hub-spoke pattern:
+
+1. **Hub Account**: Contains DynamoDB table, Kinesis stream, and Calculator Lambda
+2. **Spoke Accounts**: Send VPC flow logs to the hub for centralized processing
+
+### Quick Multi-Account Deployment
+
+Create a configuration file from the example:
+
+```bash
+cp deploy-config.example.json deploy-config.json
+# Edit deploy-config.json with your account details
+```
+
+Deploy everything with one command:
+
+```bash
+./scripts/deploy-all.sh
+```
+
+For detailed step-by-step instructions, see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+## Configuration Reference
+
+### deploy-config.json
+
+```json
+{
+  "hubAccount": {
+    "id": "111111111111",
+    "region": "us-east-1",
+    "profile": "hub-profile",
+    "lambdaCodeBucket": "my-lambda-bucket-hub"
+  },
+  "spokeAccounts": [
+    {
+      "id": "222222222222",
+      "region": "us-east-1",
+      "profile": "spoke1-profile",
+      "vpcIds": ["vpc-aaaa1111", "vpc-bbbb2222"],
+      "lambdaCodeBucket": "my-lambda-bucket-spoke1"
+    }
+  ],
+  "stackPrefix": "DTAZ"
+}
+```
+
+### Stack Props
+
+| Property | Stack | Description | Required |
+|----------|-------|-------------|----------|
+| `vpcIds` | Single, Spoke | Comma-separated VPC IDs to monitor | Yes |
+| `lambdaCodeBucket` | Hub, Single, Spoke | S3 bucket for Lambda code (optional with CDK) | No |
+| `spokeAccountIds` | Hub | Array of spoke account IDs | Yes (Hub) |
+| `centralAccountRoleArn` | Spoke | DDB role ARN from hub stack | Yes (Spoke) |
+| `destinationArn` | Spoke | CloudWatch destination ARN from hub | Yes (Spoke) |
+| `existingCloudTrailBucket` | Single, Spoke | Use existing CloudTrail bucket | No |
+| `stackPrefix` | All | Prefix for stack names (default: DTAZ) | No |
+
+### Environment Variables (Lambda)
+
+| Variable | Description |
+|----------|-------------|
+| `CURRENT_ACCOUNT` | Current AWS account ID |
+| `DDB_NAME` | DynamoDB table name |
+| `SPOKE_ACCOUNT_IDS` | Comma-separated spoke account IDs (Hub only) |
+
+### Deployment Scripts
+
+| Script | Description |
+|--------|-------------|
+| `deploy-single-account.sh` | Deploy single-account stack |
+| `deploy-hub.sh` | Deploy hub stack only |
+| `deploy-spoke.sh` | Deploy spoke stack only |
+| `deploy-all.sh` | Orchestrate full multi-account deployment |
+| `teardown.sh` | Remove all deployed stacks |
+| `upload-lambda-code.sh` | Package and upload Lambda code to S3 |
+
+## Cleanup
+
+### Single Account
+
+```bash
+./scripts/teardown.sh --single-account
+```
+
+### Multi-Account
+
+```bash
+./scripts/teardown.sh  # Uses deploy-config.json
+```
+
+Add `--force` to skip confirmation prompts.
+
+## Troubleshooting
+
+For common issues and solutions, see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
+
+## Legacy CloudFormation Templates
+
+The original CloudFormation templates are preserved in this repository for reference:
+
+| Template | Description |
+|----------|-------------|
+| `single-account-deployment.yml` | Original single-account template |
+| `data-transfer-calculator.yml` | Original hub account template |
+| `data-transfer-update.yml` | Original spoke account template |
+| `pre-roles.yml` | Original pre-requisite IAM roles |
+
+**Note**: These templates are no longer maintained. Use the CDK stacks for new deployments.
+
+## Project Structure
+
+```
+.
+├── bin/app.ts                    # CDK entry point
+├── lib/
+│   ├── constructs/               # Shared CDK constructs
+│   │   ├── az-mapping-table.ts
+│   │   ├── cloudtrail-construct.ts
+│   │   ├── load-ddb-custom-resource.ts
+│   │   ├── update-ddb-construct.ts
+│   │   ├── vpc-flowlogs-construct.ts
+│   │   └── index.ts
+│   └── stacks/                   # CDK stacks
+│       ├── hub-stack.ts
+│       ├── pre-roles-stack.ts
+│       ├── single-account-stack.ts
+│       ├── spoke-stack.ts
+│       └── index.ts
+├── lambda/                       # Lambda functions (Python 3.11)
+│   ├── calculator/
+│   ├── create-vpc-flowlogs/
+│   ├── load-az-cidr/
+│   └── update-ddb-table/
+├── scripts/                      # Deployment automation
+│   ├── deploy-hub.sh
+│   ├── deploy-spoke.sh
+│   ├── deploy-all.sh
+│   ├── deploy-single-account.sh
+│   ├── teardown.sh
+│   └── upload-lambda-code.sh
+├── docs/                         # Documentation
+│   ├── ARCHITECTURE.md
+│   ├── DEPLOYMENT.md
+│   └── TROUBLESHOOTING.md
+├── deploy-config.example.json
+├── package.json
+├── tsconfig.json
+└── cdk.json
+```
 
 ## Contributors
+
 Shiva Vaidyanathan - vaidys@amazon.com
 
 Stan Fan - fanhongy@amazon.com
@@ -74,4 +258,3 @@ See [CONTRIBUTING](CONTRIBUTING.md#security-issue-notifications) for more inform
 ## License
 
 This library is licensed under the MIT-0 License. See the LICENSE file.
-
